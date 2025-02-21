@@ -55,10 +55,8 @@ class AnalysisManager():
 
 		if (self.fOutDir) :
 			if not os.path.exists(self.fOutDir):
-				print("ERROR: output directory does not exist")
-				raise FileNotFoundError
+				os.makedirs(self.fOutDir)
 			resultsFile = open(self.fOutDir+"/"+path.name.removesuffix(".root") + ".txt" , "w")
-			
 		else :
 			if not os.path.exists(runName):
 				os.makedirs(runName)
@@ -138,8 +136,6 @@ class AnalysisManager():
 			if(t < self.fRunTime):
 				volume.append(self.GetVolume((t+self.fRunTime)/2))
 		else : volume.append(self.fVolumeI)
-
-		print(volume)
 
 		#Loop for TimeStep
 		idxBiPo = 0
@@ -271,19 +267,21 @@ def main():
 	parser.add_argument("-muEVeto", type=float, default=30000, help="Energy threshold for muon veto (nPE - 30000)")
 	parser.add_argument("-efficiency", type=float, default=0.823 ,help="BiPo efficiency (- 0.823)")
 	parser.add_argument("-volume", type=float, nargs='+', default=[1] ,help="LS volume. One value for fixed volume or two valus for initial and final volumes in the run (m3 - 1)")
+	parser.add_argument("-gain", type=float, default=1 ,help="Gain applied to energy cuts")
+	parser.add_argument("-offset", type=float, default=1 ,help="Offset adeed to energy cuts (after gain)")
 	parser.add_argument("-savePlot", action="store_true", help="Save histograms of each step")
 	parser.add_argument("-saveRoot", action="store_true", help="Save root file of each step")
-	parser.add_argument("-outDir", default=None, help="Set a directory to store the output")
+	parser.add_argument("-outDir", default=None, help="Set a directory to store the output (complete path)")
 
 	args = parser.parse_args()
 	analysisManager = AnalysisManager()
 
 	analysisManager.fRunName = args.input
 	analysisManager.fStepTime = args.stepTime * 3600.
-	analysisManager.fEBiMin = args.eBiMin
-	analysisManager.fEBiMax = args.eBiMax
-	analysisManager.fEPoMin = args.ePoMin
-	analysisManager.fEPoMax = args.ePoMax
+	analysisManager.fEBiMin = args.eBiMin * args.gain + args.offset
+	analysisManager.fEBiMax = args.eBiMax * args.gain + args.offset
+	analysisManager.fEPoMin = args.ePoMin * args.gain + args.offset
+	analysisManager.fEPoMax = args.ePoMax * args.gain + args.offset
 	analysisManager.fDelayMax = args.fDelayMax
 	analysisManager.fMuEVeto = args.muEVeto
 	analysisManager.fMuTimeVeto = args.muTimeVeto
