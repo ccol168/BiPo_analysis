@@ -9,6 +9,7 @@ from datetime import datetime
 prs = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter)
 
 prs.add_argument("name",nargs="+", help="Name of the run")
+prs.add_argument("-gain",type=float, help="Gain to be applied",default=None)
 
 args = prs.parse_args()
 cwd=os.getcwd()
@@ -16,6 +17,11 @@ cwd=os.getcwd()
 now = datetime.now()
 now_str = now.strftime("%Y%m%d_%H%M%S")
 autolauncher = open(cwd+"/launch/Launch"+now_str+".sh","w")
+
+if (args.gain) :
+    gain_str = " -gain " + str(args.gain)
+else :
+    gain_str = ""
 
 for name in args.name :
     file_name_pattern = f"RUN{name}_"
@@ -44,7 +50,7 @@ for name in args.name :
     of.write('#!/bin/bash\n')
     of.write('import time\n')
     of.write("source /cvmfs/juno.ihep.ac.cn/el9_amd64_gcc11/Release/J25.1.6/setup.sh\n")
-    of.write("python " + to_launch + " -input " + infile + " -outDir "+cwd+"/Results -volume 100 -stepTime 1" )
+    of.write("python " + to_launch + " -input " + infile + " -outDir "+cwd+"/Results -volume 100 -stepTime 1" + gain_str )
     of.close()
 
     os.chmod(sh_file,0o755)
