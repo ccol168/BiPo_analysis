@@ -141,7 +141,7 @@ bool BiPo212_reader::execute() {
         	PMTID.clear();
 
 		float AccX=0.0,AccY=0.0,AccZ=0.0;
-		int charge_in_range = 0;
+		float charge_in_range = 0.0;
 	
 	        for (const auto& element : calibevent->calibPMTCol()) {
 		
