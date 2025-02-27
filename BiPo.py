@@ -5,7 +5,7 @@ from array import array
 from pathlib import Path   
 import os
 import math
-from datetime import datetime,timezone
+from datetime import datetime, timezone, timedelta
 
 class Event:
 	fTime = 0.
@@ -32,6 +32,7 @@ class AnalysisManager():
 	fEfficiency = 1.
 	fVolumeI = 1.
 	fVolumeF = 1.
+	fVolumeFile = ""
 
 	fRunTime = 0.
 
@@ -42,7 +43,7 @@ class AnalysisManager():
 			return self.fVolumeI + (self.fVolumeF-self.fVolumeI)/self.fRunTime*t
 	
 	def ProcessIt(self):
-
+		
 		tFile = ROOT.TFile(self.fRunPath, "READ")
 		tree = tFile.Get("CdEvents")
 
@@ -62,19 +63,19 @@ class AnalysisManager():
 				os.makedirs(runName)
 			resultsFile = open(runName+"/"+path.name.removesuffix(".root") + ".txt" , "w")
 		
-		startTime = 0
+		runStartTime = 0
 		for event in tree:
-			startTime = event.TimeStamp.GetSec()
+			runStartTime = event.TimeStamp.GetSec()
 			break
 
 		for i, event in enumerate(tree):
 			if(i%1000000==0): print("Read events: " + str(i))
 			if(event.TriggerType != "Periodic") :
 				evt = Event()
-				evt.fTime = (float(event.TimeStamp.GetSec()-startTime))+(float(event.TimeStamp.GetNanoSec())/1e9)
+				evt.fTime = (float(event.TimeStamp.GetSec()-runStartTime))+(float(event.TimeStamp.GetNanoSec())/1e9)
 				evt.fNpe = event.npe
 				events.append(evt)
-			#if(len(events)>90000): break #use for debug to reduce import time
+			#if(len(events)>1000): break #use for debug to reduce import time
 
 		timeSkip = 0
 		muonCount = 0
@@ -112,7 +113,10 @@ class AnalysisManager():
 		histoEBi.SetLineColor(1)
 		histoEPo.SetLineColor(2)
 
-		self.fRunTime = events[-1].fTime - events[0].fTime
+		startTime = events[0].fTime
+		stopTime = events[-1].fTime
+		self.fRunTime = stopTime - startTime
+		runStopTime = runStartTime + self.fRunTime
 		runDTPerc = 100*muonCount*self.fMuTimeVeto / self.fRunTime
 		print("Number of all Bi-Po candidates: ", nCoinc)
 		print("Run time (s): %.1f"%(self.fRunTime))
@@ -124,7 +128,58 @@ class AnalysisManager():
 		resultsFile.write("Mean dead time (%%): %.1e\n"%(runDTPerc))
 		resultsFile.write("Date\tTime\tDuration\tSignal\tErrSignal\tBkg\tErrBkg\tChi2Rid\tActivity\tErrActivity\n")
 
-		#Compute volumes
+		#Read volume file if available
+		
+		if(self.fVolumeFile != ""):
+			self.fVolumeI = 0;
+			self.fVolumeF = 0;
+			volumeFile = open(self.fVolumeFile , "r")
+			volumeFile.readline()
+			lines = volumeFile.readlines()
+			#print("Start time: ", runStartTime)
+			for i, line in enumerate(lines):
+				currentLineSplit = line.split()
+				currentDateTime = datetime.fromisoformat(currentLineSplit[0]+"+08:00")
+				#print("Current time: ", currentDateTime, " - ", currentDateTime.timestamp())
+				if(currentDateTime.timestamp() > runStartTime and self.fVolumeI == 0): 
+					if(i>0):
+						previousLineSplit = lines[i-1].split()
+					else:
+						previousLineSplit = currentLineSplit
+					previousDateTime = datetime.fromisoformat(previousLineSplit[0]+"+08:00")
+					currentVolume = float(currentLineSplit[3])
+					previousVolume = float(previousLineSplit[3])
+					# print("Found start")
+					# print("  Previous time: ", previousDateTime.isoformat(), " - ", previousDateTime.timestamp())
+					# print("  Run start time: ", datetime.fromtimestamp(runStartTime, tz=timezone.utc).isoformat(), " - ", runStartTime)
+					# print("  Current time: ", currentDateTime.isoformat(), " - ", currentDateTime.timestamp())
+					# print("  Previous vol: ", previousVolume, " - ", currentVolume)
+					if(currentDateTime.timestamp() != previousDateTime.timestamp()):
+						self.fVolumeI = previousVolume + (currentVolume-previousVolume)/(currentDateTime.timestamp()-previousDateTime.timestamp())*(runStartTime-previousDateTime.timestamp())
+					else: self.fVolumeI = previousVolume
+
+				if(currentDateTime.timestamp() > runStopTime and self.fVolumeF == 0): 
+					if(i>0):
+						previousLineSplit = lines[i-1].split()
+					else:
+						previousLineSplit = currentLineSplit
+					previousDateTime = datetime.fromisoformat(previousLineSplit[0]+"+08:00")
+					currentVolume = float(currentLineSplit[3])
+					previousVolume = float(previousLineSplit[3])
+					# print("Found stop")
+					# print("  Previous time: ", previousDateTime.isoformat(), " - ", previousDateTime.timestamp())
+					# print("  Run stop time: ", datetime.fromtimestamp(runStopTime, tz=timezone.utc).isoformat(), " - ", runStopTime)
+					# print("  Current time: ", currentDateTime.isoformat(), " - ", currentDateTime.timestamp())
+					# print("  Previous vol: ", previousVolume, " - ", currentVolume)
+					if(currentDateTime.timestamp() != previousDateTime.timestamp()):
+						self.fVolumeF = previousVolume + (currentVolume-previousVolume)/(currentDateTime.timestamp()-previousDateTime.timestamp())*(runStopTime-previousDateTime.timestamp())
+					else: self.fVolumeF = previousVolume
+					break;
+
+		print("Volume iniziale: %.1f"%self.fVolumeI)
+		print("volume finale: %0.1f"%self.fVolumeF)
+
+		#Compute volume list
 		volume = []
 
 		if (self.fStepTime != float("inf")) :
@@ -169,9 +224,7 @@ class AnalysisManager():
 			stepTime *= -1
 
 			beginTime = startTime + timefromstart
-
 			timefromstart += stepTime
-
 			dt = datetime.fromtimestamp(beginTime,tz=timezone.utc)
 
 			# Extract date and time
@@ -262,11 +315,12 @@ def main():
 	parser.add_argument("-eBiMax", type=float, default=9000, help="Maximum energy of Bi events (nPE - )")
 	parser.add_argument("-ePoMin", type=float, default=2300, help="Minimum energy of Po events (nPE - )")
 	parser.add_argument("-ePoMax", type=float, default=3000, help="Maximum energy of Po events (nPE - )")
-	parser.add_argument("-fDelayMax", type=float, default=2e-3, help="Maximum delay for BiPo delayed coincidence (s - 2e-3)")
+	parser.add_argument("-delayMax", type=float, default=2e-3, help="Maximum delay for BiPo delayed coincidence (s - 2e-3)")
 	parser.add_argument("-muTimeVeto", type=float, default=20e-6, help="Duration of muon veto (s - 20e-6)")
 	parser.add_argument("-muEVeto", type=float, default=30000, help="Energy threshold for muon veto (nPE - 30000)")
 	parser.add_argument("-efficiency", type=float, default=0.823 ,help="BiPo efficiency (- 0.823)")
 	parser.add_argument("-volume", type=float, nargs='+', default=[1] ,help="LS volume. One value for fixed volume or two valus for initial and final volumes in the run (m3 - 1)")
+	parser.add_argument("-volumeFile", default="", help="File with the filling volume info from http://junodqm1.ihep.ac.cn:5000/JUNO/LS_filling/download_file/massVolumeLS.txt")
 	parser.add_argument("-gain", type=float, default=1 ,help="Gain applied to energy cuts")
 	parser.add_argument("-offset", type=float, default=1 ,help="Offset adeed to energy cuts (after gain)")
 	parser.add_argument("-savePlot", action="store_true", help="Save histograms of each step")
@@ -282,7 +336,7 @@ def main():
 	analysisManager.fEBiMax = args.eBiMax * args.gain + args.offset
 	analysisManager.fEPoMin = args.ePoMin * args.gain + args.offset
 	analysisManager.fEPoMax = args.ePoMax * args.gain + args.offset
-	analysisManager.fDelayMax = args.fDelayMax
+	analysisManager.fDelayMax = args.delayMax
 	analysisManager.fMuEVeto = args.muEVeto
 	analysisManager.fMuTimeVeto = args.muTimeVeto
 	analysisManager.fEfficiency = args.efficiency
@@ -291,6 +345,7 @@ def main():
 		analysisManager.fVolumeF = args.volume[1]
 	else:
 		analysisManager.fVolumeF = analysisManager.fVolumeI
+	analysisManager.fVolumeFile = args.volumeFile
 	analysisManager.fSavePlot = args.savePlot
 	analysisManager.fSaveRoot = args.saveRoot
 	analysisManager.fOutDir = args.outDir
