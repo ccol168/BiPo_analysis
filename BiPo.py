@@ -174,7 +174,7 @@ class AnalysisManager():
 					if(currentDateTime.timestamp() != previousDateTime.timestamp()):
 						self.fVolumeF = previousVolume + (currentVolume-previousVolume)/(currentDateTime.timestamp()-previousDateTime.timestamp())*(runStopTime-previousDateTime.timestamp())
 					else: self.fVolumeF = previousVolume
-					break;
+					break
 
 		print("Volume iniziale: %.1f"%self.fVolumeI)
 		print("volume finale: %0.1f"%self.fVolumeF)
@@ -223,7 +223,7 @@ class AnalysisManager():
 
 			stepTime *= -1
 
-			beginTime = startTime + timefromstart
+			beginTime = runStartTime + timefromstart
 			timefromstart += stepTime
 			dt = datetime.fromtimestamp(beginTime,tz=timezone.utc)
 
